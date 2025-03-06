@@ -3,7 +3,12 @@ const path = require("path");
 const session = require("express-session");
 const passport = require("passport");
 const KakaoStrategy = require("passport-kakao").Strategy;
+const GoogleStrategy = require("passport-google-oauth20").Strategy;
 const axios = require("axios");
+require('dotenv').config();
+
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 
 const app = express();
 const PORT = 8080;
@@ -11,7 +16,7 @@ const PORT = 8080;
 // ----- [1] 세션 설정 -----
 app.use(
     session({
-        secret: "choijh", // 원하는 문자열
+        secret: "choijh",
         resave: false,
         saveUninitialized: false,
     })
@@ -43,6 +48,24 @@ passport.use(
             } catch (err) {
                 return done(err);
             }
+        }
+    )
+);
+
+passport.use(
+    new GoogleStrategy(
+        {
+            clientID: GOOGLE_CLIENT_ID, // Google에서 발급한 클라이언트 ID
+            clientSecret: GOOGLE_CLIENT_SECRET, // Google에서 발급한 클라이언트 비밀번호
+            callbackURL: "/auth/google/callback",
+        },
+        (accessToken, refreshToken, profile, done) => {
+            console.log("Google profile:", profile);
+            const user = {
+                id: profile.id,
+                displayName: profile.displayName,
+            };
+            return done(null, user);
         }
     )
 );
@@ -84,6 +107,22 @@ app.get(
     }),
     (req, res) => {
         // 성공 시
+        req.session.loginProvider = "kakao";
+        res.redirect("/profile");
+    }
+);
+
+// (b) Google 로그인 시작
+app.get("/auth/google", passport.authenticate("google", { scope: ["profile", "email"] }));
+
+// (c) Google 로그인 콜백
+app.get(
+    "/auth/google/callback",
+    passport.authenticate("google", {
+        failureRedirect: "/",
+    }),
+    (req, res) => {
+        req.session.loginProvider = "google";
         res.redirect("/profile");
     }
 );
@@ -106,7 +145,7 @@ app.get("/logout", async (req, res) => {
     const KAKAO_LOGOUT_REDIRECT_URI = "http://localhost:8080/";
     const KAKAO_APP_KEY = "0839de029820e644fa50a0c2492a6ec0"; // 카카오 REST API 키 입력
 
-    if (req.user && req.user.accessToken) {
+    if (req.session.loginProvider && req.user?.accessToken) {
         try {
             // 카카오 API를 사용하여 강제 로그아웃
             await axios.post(
@@ -122,18 +161,41 @@ app.get("/logout", async (req, res) => {
         } catch (err) {
             console.error("카카오 서버 로그아웃 실패:", err);
         }
+
+        req.logout(() => {
+            req.session.destroy(() => {
+                res.redirect(
+                    `https://kauth.kakao.com/oauth/logout?client_id=${KAKAO_APP_KEY}&logout_redirect_uri=${KAKAO_LOGOUT_REDIRECT_URI}`
+                );
+            });
+        });
     }
 
-    req.logout(() => {
-        req.session.destroy(() => {
-            res.redirect(
-                `https://kauth.kakao.com/oauth/logout?client_id=${KAKAO_APP_KEY}&logout_redirect_uri=${KAKAO_LOGOUT_REDIRECT_URI}`
-            );
+    else if (req.session.loginProvider === "google") {
+        req.logout(() => {
+            req.session.destroy(() => {
+                res.clearCookie("connect.sid");
+                console.log("구글 세션 로그아웃 완료");
+                res.send(`
+                    <script>
+                        window.open("https://accounts.google.com/logout", "_blank", "width=500,height=600");
+                        setTimeout(() => {
+                            window.location.href = "/";
+                        }, 500);
+                    </script>
+                `);
+            });
         });
-    });
+    }
+
+    else {
+        req.logout(() => {
+            req.session.destroy(() => {
+                res.redirect("/");
+            });
+        });
+    }
 });
-
-
 
 // ----- [7] 서버 실행 -----
 app.listen(PORT, () => {
