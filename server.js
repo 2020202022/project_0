@@ -1,32 +1,36 @@
-const express = require("express");
-const path = require("path");
-const session = require("express-session");
-const passport = require("passport");
-const KakaoStrategy = require("passport-kakao").Strategy;
-const GoogleStrategy = require("passport-google-oauth20").Strategy;
-const axios = require("axios");
-require('dotenv').config();
+const express = require("express"); // express 모듈 불러오기
+const path = require("path");   // 파일 경로 관련 기능 제공
+const session = require("express-session"); // 세션 관리 모듈
+const passport = require("passport");   // 로그인 인증을 위한 passport 모듈
+const KakaoStrategy = require("passport-kakao").Strategy;   // 카카오
+const GoogleStrategy = require("passport-google-oauth20").Strategy; // 구글
+const axios = require("axios"); // http 요청을 보내기 위한 axios 모듈
+const fs = require("fs");  // fs 모듈 추가
+require('dotenv').config(); // .env 파일에 있는 환경 변수 불러오기
 
+// .env에서 google oauth 정보 가져오기
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 
-const app = express();
-const PORT = 8080;
+const app = express();  // express 애플리케이션 생성 (서버)
+const PORT = 8080;  // 서버가 실행될 포트 넘버
 
 // ----- [1] 세션 설정 -----
 app.use(
     session({
-        secret: "choijh",
-        resave: false,
-        saveUninitialized: false,
+        secret: "choijh",   // 세션 암호화 키
+        resave: false,      // 세션을 변경하지 않으면 저장x
+        saveUninitialized: false,   // 빈 세션을 저장할지 여부
     })
 );
 
 // ----- [2] Passport 초기화 -----
-app.use(passport.initialize());
-app.use(passport.session());
+app.use(passport.initialize()); // passport 초기화 미들웨어 적용
+app.use(passport.session());    // passport가 세션을 사용할 수 있도록 설정
 
 // ----- [3] Passport 전략 설정 -----
+
+// (a) 카카오 로그인 전략 설정
 passport.use(
     new KakaoStrategy(
         {
@@ -36,36 +40,35 @@ passport.use(
         async (accessToken, refreshToken, profile, done) => {
             // profile: 카카오에서 보내주는 사용자 정보
             try {
-                console.log("Kakao profile:", profile);
-
                 // 실제 서비스에서는 DB 조회 또는 회원가입 로직을 넣어야 함
                 // 여기서는 간단히 profile 정보만 넘겨서 세션에 저장한다고 가정
                 const user = {
                     id: profile.id,
                     accessToken: accessToken,   // 로그아웃 시 사용
                 };
-                return done(null, user);
+                return done(null, user);    // passport에 사용자 정보 넘기기
             } catch (err) {
-                return done(err);
+                return done(err);   // 오류 발생 시
             }
         }
     )
 );
 
+// (b) 구글 로그인 전략 설정
 passport.use(
     new GoogleStrategy(
         {
             clientID: GOOGLE_CLIENT_ID, // Google에서 발급한 클라이언트 ID
             clientSecret: GOOGLE_CLIENT_SECRET, // Google에서 발급한 클라이언트 비밀번호
-            callbackURL: "/auth/google/callback",
+            callbackURL: "/auth/google/callback",   // 구글 인증 후 돌아올 콜백 URL
         },
         (accessToken, refreshToken, profile, done) => {
-            console.log("Google profile:", profile);
+            // 유저 정보 생성
             const user = {
                 id: profile.id,
-                displayName: profile.displayName,
+                displayName: profile.displayName,   // 구글 프로필 이름
             };
-            return done(null, user);
+            return done(null, user);    // passport에 사용자 정보 넘기기
         }
     )
 );
@@ -85,12 +88,12 @@ app.use(express.static(path.join(__dirname, "public")));
 
 // ----- [6] 라우팅 -----
 
-// (a) 홈 화면: login.html을 보여주기
+// (a) 홈 페이지 (로그인 화면)
 app.get("/", (req, res) => {
     res.sendFile(path.join(__dirname, "public", "login.html"));
 });
 
-// (b) 카카오 로그인 시작
+// (b-1) 카카오 로그인 시작
 app.get("/auth/kakao", (req, res, next) => {
     // 기존 세션 삭제 후 로그인 진행 (자동 로그인 방지)
     req.logout(() => {
@@ -99,7 +102,7 @@ app.get("/auth/kakao", (req, res, next) => {
     });
 }, passport.authenticate("kakao"));
 
-// (c) 카카오 로그인 콜백
+// (c-1) 카카오 로그인 콜백
 app.get(
     "/auth/kakao/callback",
     passport.authenticate("kakao", {
@@ -108,14 +111,14 @@ app.get(
     (req, res) => {
         // 성공 시
         req.session.loginProvider = "kakao";
-        res.redirect("/profile");
+        res.redirect("/profile");   // 로그인 성공 시 프로필 페이지로 *수정*
     }
 );
 
-// (b) Google 로그인 시작
+// (b-2) Google 로그인 시작
 app.get("/auth/google", passport.authenticate("google", { scope: ["profile", "email"] }));
 
-// (c) Google 로그인 콜백
+// (c-2) Google 로그인 콜백
 app.get(
     "/auth/google/callback",
     passport.authenticate("google", {
@@ -123,21 +126,37 @@ app.get(
     }),
     (req, res) => {
         req.session.loginProvider = "google";
-        res.redirect("/profile");
+        res.redirect("/profile");   // 로그인 성공 시 프로필 페이지로
     }
 );
 
-// (d) 프로필 페이지: 로그인 성공 후 사용자 정보 확인
+// (d) 프로필 페이지: 로그인 성공 후 사용자 정보 확인 
 app.get("/profile", (req, res) => {
     if (!req.user) {
         return res.redirect("/");
     }
-    res.send(`
-    <h1>Profile</h1>
-    <p>로그인 성공!</p>
-    <p>사용자 ID: ${req.user.id}</p>
-    <a href="/logout">로그아웃</a>
-  `);
+    // 로그인 제공자와 사용자 id를 가져오기
+    const loginProvider = req.session.loginProvider;
+    const userId = req.user.id;
+    // user.txt에 한 줄씩 기록 (예: kakao_394xxx 또는 google_123xxx)
+    const logLine = `${loginProvider}_${userId}\n`;
+    fs.appendFile("user.txt", logLine, (err) => {
+        if (err) {
+            console.error("user.txt 기록 오류:", err);
+        } else {
+            console.log("user.txt에 정보 기록됨:", logLine.trim());
+        }
+    });
+    // profile.html 파일을 읽어와서 placeholder 치환 후 응답
+    fs.readFile(path.join(__dirname, "public", "profile.html"), "utf8", (err, data) => {
+        if (err) {
+            return res.status(500).send("프로필 페이지를 불러올 수 없습니다.");
+        }
+        // 치환: {{loginProvider}}와 {{userId}}를 실제 값으로 대체
+        let output = data.replace("{{loginProvider}}", loginProvider)
+            .replace("{{userId}}", userId);
+        res.send(output);
+    });
 });
 
 // (e) 로그아웃
