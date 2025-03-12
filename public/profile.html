@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <title>프로필 페이지</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .map-container {
+            text-align: center;
+            overflow: visible;
+        }
+    </style>
+</head>
+
+<body>
+    <header>
+        <p>로그인 수단: {{loginProvider}}</p>
+        <p>사용자 ID: {{userId}}</p>
+        <a href="/logout">로그아웃</a>
+    </header>
+    <div class="map-container">
+        <object id="seoulMap" data="image/seoulMap.svg" type="image/svg+xml" width="800" height="600">
+            서울 지도 이미지
+        </object>
+    </div>
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            const mapObject = document.getElementById("seoulMap");
+
+            mapObject.addEventListener("load", function () {
+                const svgDoc = mapObject.contentDocument || mapObject.getSVGDocument();  // SVG 내부 접근
+                if (!svgDoc) {
+                    console.error("SVG 로드 실패: contentDocument를 찾을 수 없음");
+                    return;
+                }
+
+                const regions = svgDoc.querySelectorAll("path"); // 그룹 안의 path 태그 찾기
+
+                regions.forEach(region => {
+                    const bbox = region.getBBox(); // 요소의 크기와 위치 정보 가져오기
+                    const cx = bbox.x + bbox.width / 2; // 중심 X 좌표
+                    const cy = bbox.y + bbox.height / 2; // 중심 Y 좌표
+
+                    // 원래 색상 저장
+                    const originalColor = region.getAttribute("fill");
+
+                    // dataset 초기화: 선택 여부를 false로 설정
+                    region.dataset.selected = "false";
+
+                    // 마우스 오버 시 확대 및 색 변경
+                    region.addEventListener("mouseover", function () {
+                        if (region.dataset.selected === "false") {
+                            this.setAttribute("transform", `translate(${cx},${cy}) scale(1.03) translate(${-cx},${-cy})`);
+                            this.style.fill = "rgb(135, 216, 29)";
+                        }
+                    });
+
+                    // 마우스가 벗어나면 원래 크기 및 색상으로 복귀
+                    region.addEventListener("mouseout", function () {
+                        if (region.dataset.selected === "false") {
+                            this.removeAttribute("transform");
+                            this.style.fill = "rgb(96, 169, 15)"; // 원래 색상으로 복귀
+                        }
+                    });
+
+                    // 클릭 이벤트: 한 번에 하나의 구역만 선택되도록 함
+                    region.addEventListener("click", function () {
+                        // 클릭한 구역이 이미 선택된 경우에는 선택 해제
+                        if (region.dataset.selected === "true") {
+                            region.dataset.selected = "false";
+                            region.removeAttribute("transform");
+                            region.style.fill = "rgb(96, 169, 15)";
+                        } else {
+                            // 다른 모든 구역 선택 해제
+                            regions.forEach(otherRegion => {
+                                if (otherRegion.dataset.selected === "true") {
+                                    otherRegion.dataset.selected = "false";
+                                    otherRegion.removeAttribute("transform");
+                                    otherRegion.style.fill = "rgb(96, 169, 15)";
+                                }
+                            });
+                            // 클릭한 구역 선택 상태 적용
+                            region.dataset.selected = "true";
+                            region.setAttribute("transform", `translate(${cx},${cy}) scale(1.03) translate(${-cx},${-cy})`);
+                            region.style.fill = "rgb(135, 216, 29)";
+                        }
+                    });
+                });
+            });
+        });
+    </script>
+</body>
+
+</html>
