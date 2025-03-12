@@ -85,6 +85,7 @@ passport.deserializeUser((obj, done) => {
 
 // ----- [5] 정적 파일 경로 설정 -----
 app.use(express.static(path.join(__dirname, "public")));
+app.use(express.urlencoded({ extended: true })); // POST 데이터 파싱
 
 // ----- [6] 라우팅 -----
 
@@ -111,7 +112,7 @@ app.get(
     (req, res) => {
         // 성공 시
         req.session.loginProvider = "kakao";
-        res.redirect("/profile");   // 로그인 성공 시 프로필 페이지로 *수정*
+        res.redirect("/profile");   // 로그인 성공 시 프로필 페이지로
     }
 );
 
@@ -138,28 +139,118 @@ app.get("/profile", (req, res) => {
     // 로그인 제공자와 사용자 id를 가져오기
     const loginProvider = req.session.loginProvider;
     const userId = req.user.id;
-    // user.txt에 한 줄씩 기록 (예: kakao_394xxx 또는 google_123xxx)
-    const logLine = `${loginProvider}_${userId}\n`;
-    fs.appendFile("user.txt", logLine, (err) => {
+    const userPrefix = `${loginProvider}_${userId}`;
+
+    // user.txt에서 해당 회원 정보 검색
+    fs.readFile("user.txt", "utf8", (err, data) => {
         if (err) {
-            console.error("user.txt 기록 오류:", err);
+            // 파일 읽기 오류 또는 파일이 없으면 새로 기록
+            fs.appendFile("user.txt", userPrefix + "\n", (err2) => {
+                if (err2) console.error("user.txt 기록 오류:", err2);
+                serveProfileHtml();
+            });
         } else {
-            console.log("user.txt에 정보 기록됨:", logLine.trim());
+            const lines = data.split("\n").filter(line => line.trim() !== "");
+            const userLine = lines.find(line => line.startsWith(userPrefix));
+            if (!userLine) {
+                // 회원정보가 없으므로 새로 기록하고 profile.html 제공
+                fs.appendFile("user.txt", userPrefix + "\n", (err2) => {
+                    if (err2) console.error("user.txt 기록 오류:", err2);
+                    serveProfileHtml();
+                });
+            } else {
+                // 회원정보가 존재하는 경우
+                const parts = userLine.split("/");
+                if (parts.length === 1) {
+                    // 회원정보만 존재하는 경우 -> 추가 정보 입력 받음 (profile.html)
+                    serveProfileHtml();
+                } else if (parts.length === 4) {
+                    // 추가 정보(장소, 인원수, 태그)가 이미 존재하는 경우 -> main.html로 이동
+                    req.session.submission = {
+                        userInfo: parts[0],
+                        region: parts[1],
+                        num: parts[2],
+                        tag: parts[3]
+                    };
+                    res.redirect("/main");
+                } else {
+                    // 그 외의 경우도 추가 정보 입력 받음
+                    serveProfileHtml();
+                }
+            }
         }
     });
-    // profile.html 파일을 읽어와서 placeholder 치환 후 응답
-    fs.readFile(path.join(__dirname, "public", "profile.html"), "utf8", (err, data) => {
-        if (err) {
-            return res.status(500).send("프로필 페이지를 불러올 수 없습니다.");
+
+    function serveProfileHtml() {
+        fs.readFile(path.join(__dirname, "public", "profile.html"), "utf8", (err, data) => {
+            if (err) return res.status(500).send("프로필 페이지를 불러올 수 없습니다.");
+            const output = data.replace("{{loginProvider}}", loginProvider)
+                .replace("{{userId}}", userId);
+            res.send(output);
+        });
+    }
+});
+
+// (e) 제출 라우트: profile.html에서 입력받은 추가 정보 업데이트
+app.post("/submit", (req, res) => {
+    if (!req.user) {
+        return res.redirect("/");
+    }
+    const loginProvider = req.session.loginProvider;
+    const userId = req.user.id;
+    const userPrefix = `${loginProvider}_${userId}`;
+    const region = req.body.region;  // 지도에서 선택한 구 (영어 id)
+    const num = req.body.num;        // 선택한 인원 수
+    const tag = req.body.tag;        // 선택한 태그
+
+    const newLine = `${userPrefix}/${region}/${num}/${tag}`;
+
+    // user.txt 파일 읽어 해당 회원 정보 줄을 업데이트
+    fs.readFile("user.txt", "utf8", (err, data) => {
+        if (err) return res.status(500).send("파일 읽기 오류");
+        let lines = data.split("\n");
+        let found = false;
+        lines = lines.map(line => {
+            if (line.startsWith(userPrefix)) {
+                found = true;
+                return newLine;
+            }
+            return line;
+        });
+        if (!found) {
+            // 만약 해당 회원 정보가 없으면 새로 추가
+            lines.push(newLine);
         }
-        // 치환: {{loginProvider}}와 {{userId}}를 실제 값으로 대체
-        let output = data.replace("{{loginProvider}}", loginProvider)
-            .replace("{{userId}}", userId);
+        fs.writeFile("user.txt", lines.join("\n"), "utf8", (err) => {
+            if (err) return res.status(500).send("파일 쓰기 오류");
+            req.session.submission = {
+                userInfo: userPrefix,
+                region: region,
+                num: num,
+                tag: tag
+            };
+            res.redirect("/main");
+        });
+    });
+});
+
+// (f) /main 라우트: main.html 파일의 placeholder 치환 후 응답
+app.get("/main", (req, res) => {
+    if (!req.session.submission) {
+        return res.redirect("/");
+    }
+    fs.readFile(path.join(__dirname, "public", "main.html"), "utf8", (err, data) => {
+        if (err) return res.status(500).send("메인 페이지를 불러올 수 없습니다.");
+        const submission = req.session.submission;
+        const output = data.replace("{{userInfo}}", submission.userInfo)
+            .replace("{{region}}", submission.region)
+            .replace("{{num}}", submission.num)
+            .replace("{{tag}}", submission.tag);
         res.send(output);
     });
 });
 
-// (e) 로그아웃
+// (g) 로그아웃
 app.get("/logout", async (req, res) => {
     const KAKAO_LOGOUT_REDIRECT_URI = "http://localhost:8080/";
     const KAKAO_APP_KEY = "0839de029820e644fa50a0c2492a6ec0"; // 카카오 REST API 키 입력
@@ -219,4 +310,63 @@ app.get("/logout", async (req, res) => {
 // ----- [7] 서버 실행 -----
 app.listen(PORT, () => {
     console.log(`Server running at http://localhost:${PORT}`);
+});
+
+app.use(express.urlencoded({ extended: true }));
+
+app.post("/submit", (req, res) => {
+    // 로그인 되어 있지 않으면 홈으로 리다이렉트
+    if (!req.user) {
+        return res.redirect("/");
+    }
+
+    const loginProvider = req.session.loginProvider;
+    const userId = req.user.id;
+
+    // 폼으로부터 전달된 값
+    const region = req.body.region;  // 지도에서 선택한 구 (SVG path의 id)
+    const num = req.body.num;        // 선택한 인원 수
+    const tag = req.body.tag;        // 선택한 태그
+
+    // 저장할 문자열 생성 (예: kakao_id/동작구/2명/연인)
+    const logLine = `${loginProvider}_${userId}/${region}/${num}명/${tag}\n`;
+
+    // user.txt에 이어서 저장
+    fs.appendFile("user.txt", logLine, (err) => {
+        if (err) {
+            console.error("user.txt 기록 오류:", err);
+            return res.status(500).send("제출 처리 중 오류가 발생했습니다.");
+        }
+        console.log("user.txt에 제출 정보 기록됨:", logLine.trim());
+
+        // session에 제출 정보를 저장 (추후 /main에서 치환에 사용)
+        req.session.submission = {
+            userInfo: `${loginProvider}_${userId}`,
+            region: region,
+            num: `${num}명`,
+            tag: tag
+        };
+
+        // 제출 후 /main으로 리다이렉트
+        res.redirect("/main");
+    });
+});
+
+// /main 라우트: main.html 파일의 placeholder를 치환하여 응답
+app.get("/main", (req, res) => {
+    if (!req.session.submission) {
+        return res.redirect("/");
+    }
+
+    fs.readFile(path.join(__dirname, "public", "main.html"), "utf8", (err, data) => {
+        if (err) {
+            return res.status(500).send("메인 페이지를 불러올 수 없습니다.");
+        }
+        const submission = req.session.submission;
+        let output = data.replace("{{userInfo}}", submission.userInfo)
+            .replace("{{region}}", submission.region)
+            .replace("{{num}}", submission.num)
+            .replace("{{tag}}", submission.tag);
+        res.send(output);
+    });
 });
