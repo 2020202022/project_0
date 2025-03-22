@@ -1,7 +1,96 @@
+html {
+    scroll-behavior: smooth;
+}
+
+#themesetClick,
+#todayrouteClick,
+#travellistClick {
+    cursor: pointer;
+}
+
+#themesetTitle,
+#todayrouteTitle,
+#travellistTitle {
+    scroll-margin-top: 70px;
+}
+
 body {
-    font-family: Arial, sans-serif;
+    padding-top: 70px;
+}
+
+.dropdown-menu {
+    width: 112px !important;
+    min-width: 112px !important;
+    white-space: nowrap;
 }
 
 .container {
-    margin: 20px;
+    max-width: 90vw;
+}
+
+.content-area {
+    border-left: 3px solid #000;
+    /* 선의 두께와 색상 */
+    padding-left: 2rem;
+    /* 선과 내용 사이에 여백 */
+    margin-left: 50px;
+}
+
+.themeset-title {
+    border-left: none;
+}
+
+.themeset-img {
+    border-left: 3px solid #000;
+    /* 선의 두께와 색상 */
+    padding-left: 4rem;
+    /* 선과 내용 사이에 여백 */
+    margin-left: 50px;
+
+    padding: 60px 15%;
+}
+
+.themeset-img img {
+    width: 100%;
+    height: auto;
+}
+
+.todayroute-title {
+    margin-top: 17px;
+    border-left: none;
+}
+
+.todayroute-img {
+    border-left: 3px solid #000;
+    /* 선의 두께와 색상 */
+    padding-left: 4rem;
+    /* 선과 내용 사이에 여백 */
+    margin-left: 50px;
+
+    padding: 60px 15%;
+}
+
+.todayroute-img img {
+    width: 100%;
+    height: auto;
+}
+
+.travellist-title {
+    margin-top: 17px;
+    border-left: none;
+}
+
+.travellist-img {
+    border-left: 3px solid #000;
+    /* 선의 두께와 색상 */
+    padding-left: 4rem;
+    /* 선과 내용 사이에 여백 */
+    margin-left: 50px;
+
+    padding: 60px 15%;
+}
+
+.travellist-img img {
+    width: 100%;
+    height: auto;
 }

@@ -172,7 +172,7 @@ app.get("/profile", (req, res) => {
                         num: parts[2],
                         tag: parts[3]
                     };
-                    res.redirect("/main");
+                    res.redirect("/result");
                 } else {
                     // 그 외의 경우도 추가 정보 입력 받음
                     serveProfileHtml();
@@ -229,18 +229,18 @@ app.post("/submit", (req, res) => {
                 num: num,
                 tag: tag
             };
-            res.redirect("/main");
+            res.redirect("/result");
         });
     });
 });
 
-// (f) /main 라우트: main.html 파일의 placeholder 치환 후 응답
-app.get("/main", (req, res) => {
+// (f) /result 라우트: result.html 파일의 placeholder 치환 후 응답
+app.get("/result", (req, res) => {
     if (!req.session.submission) {
         return res.redirect("/");
     }
-    fs.readFile(path.join(__dirname, "public", "main.html"), "utf8", (err, data) => {
-        if (err) return res.status(500).send("메인 페이지를 불러올 수 없습니다.");
+    fs.readFile(path.join(__dirname, "public", "result.html"), "utf8", (err, data) => {
+        if (err) return res.status(500).send("결과 페이지를 불러올 수 없습니다.");
         const submission = req.session.submission;
         const output = data.replace("{{userInfo}}", submission.userInfo)
             .replace("{{region}}", submission.region)
@@ -339,26 +339,26 @@ app.post("/submit", (req, res) => {
         }
         console.log("user.txt에 제출 정보 기록됨:", logLine.trim());
 
-        // session에 제출 정보를 저장 (추후 /main에서 치환에 사용)
+        // session에 제출 정보를 저장 (추후 /result에서 치환에 사용)
         req.session.submission = {
             userInfo: `${loginProvider}_${userId}`,
             region: region,
-            num: `${num}명`,
+            num: num,
             tag: tag
         };
 
-        // 제출 후 /main으로 리다이렉트
-        res.redirect("/main");
+        // 제출 후 /result으로 리다이렉트
+        res.redirect("/result");
     });
 });
 
-// /main 라우트: main.html 파일의 placeholder를 치환하여 응답
-app.get("/main", (req, res) => {
+// /result 라우트: result.html 파일의 placeholder를 치환하여 응답
+app.get("/result", (req, res) => {
     if (!req.session.submission) {
         return res.redirect("/");
     }
 
-    fs.readFile(path.join(__dirname, "public", "main.html"), "utf8", (err, data) => {
+    fs.readFile(path.join(__dirname, "public", "result.html"), "utf8", (err, data) => {
         if (err) {
             return res.status(500).send("메인 페이지를 불러올 수 없습니다.");
         }
